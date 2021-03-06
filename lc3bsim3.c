@@ -828,4 +828,57 @@ void latch_datapath_values()
    * require sourcing the bus; therefore, this routine has to come 
    * after drive_bus.
    */
+    if (GetLD_MAR(CURRENT_LATCHES.MICROINSTRUCTION))
+    {
+        NEXT_LATCHES.MAR = BUS;
+    }
+    if (GetLD_MDR(CURRENT_LATCHES.MICROINSTRUCTION))
+    {
+    }
+    if (GetLD_IR(CURRENT_LATCHES.MICROINSTRUCTION))
+    {
+        NEXT_LATCHES.IR = BUS;
+    }
+    if (GetLD_BEN(CURRENT_LATCHES.MICROINSTRUCTION))
+    {
+    }
+    if (GetLD_REG(CURRENT_LATCHES.MICROINSTRUCTION))
+    {
+    }
+    if (GetLD_CC(CURRENT_LATCHES.MICROINSTRUCTION))
+    {
+        if (BUS < 0)
+        {
+            NEXT_LATCHES.N = 1;
+            NEXT_LATCHES.Z = 0;
+            NEXT_LATCHES.P = 0;
+        }
+        if (BUS == 0)
+        {
+            NEXT_LATCHES.N = 0;
+            NEXT_LATCHES.Z = 1;
+            NEXT_LATCHES.P = 0;
+        }
+        if (BUS > 0)
+        {
+            NEXT_LATCHES.N = 0;
+            NEXT_LATCHES.Z = 0;
+            NEXT_LATCHES.P = 1;
+        }
+    }
+    if (GetLD_PC(CURRENT_LATCHES.MICROINSTRUCTION))
+    {
+        switch (GetPCMUX(CURRENT_LATCHES.MICROINSTRUCTION))
+        {
+        case 0:
+            NEXT_LATCHES.PC = CURRENT_LATCHES.PC;
+            break;
+        case 1:
+            NEXT_LATCHES.PC = BUS;
+            break;
+        case 2:
+            //NEXT_LATCHES.PC;
+            break;
+        }
+    }
 }
