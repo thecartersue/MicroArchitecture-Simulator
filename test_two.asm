@@ -1,0 +1,19 @@
+.ORIG x4000
+
+LEA R0, TRS
+JSRR R0
+HALT
+
+TRS AND R1, R1, #0
+LEA R2, B
+LDW R2, R2, #0
+ADD R1, R1, #2
+LOOP    ADD R1, R1, R1
+ADD R2, R2, #-1
+BRp LOOP
+RET
+
+B       .FILL #5
+.END
+
+

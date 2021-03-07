@@ -619,7 +619,11 @@ int main(int argc, char *argv[])
 /***************************************************************/
 uint16_t memory_data = 0;
 uint16_t memory_access_cycle_counter = 0;
-uint16_t current_bus_value = 0;
+uint16_t mar_mux_bus_driver = 0;
+uint16_t pc_bus_driver = 0;
+uint16_t alu_bus_driver = 0;
+uint16_t shift_bus_driver = 0;
+uint16_t mdr_bus_driver = 0;
 
 uint8_t get_opcode()
 {
@@ -766,11 +770,6 @@ void cycle_memory()
         }
     }
 }
-uint16_t mar_mux_bus_driver = 0;
-uint16_t pc_bus_driver = 0;
-uint16_t alu_bus_driver = 0;
-uint16_t shift_bus_driver = 0;
-uint16_t mdr_bus_driver = 0;
 
 uint16_t mar_gate_value()
 {
