@@ -777,7 +777,7 @@ uint16_t mar_gate_value()
     {
         return adders_result();
     }
-    return current_bus_value = ((CURRENT_LATCHES.IR & 0x007F) << 1);
+    return ((CURRENT_LATCHES.IR & 0x007F) << 1);
 }
 
 uint16_t pc_gate_value()
