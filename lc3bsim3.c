@@ -656,10 +656,9 @@ int adder_muxes()
         result += CURRENT_LATCHES.PC;
         break;
     }
-
     switch (GetADDR2MUX(CURRENT_LATCHES.MICROINSTRUCTION))
     {
-        int shift = GetLSHF1(CURRENT_LATCHES.MICROINSTRUCTION);
+
     case 0:
         result += 0;
         break;
@@ -812,10 +811,11 @@ int pc_gate_value()
 
 int alu_gate_value()
 {
+    int steering_bit = Low16bits(get_bits(CURRENT_LATCHES.IR, 5, 5));
+    int sign_bit = (get_bits(CURRENT_LATCHES.IR, 4, 4));
     switch (GetALUK(CURRENT_LATCHES.MICROINSTRUCTION))
     {
-        int steering_bit = Low16bits(get_bits(CURRENT_LATCHES.IR, 5, 5));
-        int sign_bit = (get_bits(CURRENT_LATCHES.IR, 4, 4));
+
     case 0: // ADD
         if (steering_bit)
         {
