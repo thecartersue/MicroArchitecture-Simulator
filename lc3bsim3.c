@@ -868,11 +868,11 @@ uint16_t shift_gate_value()
             int sign = ((0x8000 & CURRENT_LATCHES.IR) >> 15);
             if (sign)
             {
-                    return (((-1) * CURRENT_LATCHES.REGS[(CURRENT_LATCHES.IR & 0x01C0) >> 6]) >> shift;
+                return (((-1) * CURRENT_LATCHES.REGS[(CURRENT_LATCHES.IR & 0x01C0) >> 6]) >> shift);
             }
             else
             {
-                    return ((CURRENT_LATCHES.REGS[(CURRENT_LATCHES.IR & 0x01C0) >> 6]) >> shift;
+                return ((CURRENT_LATCHES.REGS[(CURRENT_LATCHES.IR & 0x01C0) >> 6]) >> shift);
             }
         }
         else
@@ -896,11 +896,11 @@ uint16_t mdr_gate_value()
         int sign = ((0x0080 & CURRENT_LATCHES.IR) >> 7);
         if (sign)
         {
-                return (-1)*(CURRENT_LATCHES.MDR >> 8*(CURRENT_LATCHES.MAR % 2))&0x00FF);
+            return ((-1) * (CURRENT_LATCHES.MDR >> 8 * (CURRENT_LATCHES.MAR % 2)) & 0x00FF);
         }
         else
         {
-                 return (CURRENT_LATCHES.MDR >> 8*(CURRENT_LATCHES.MAR % 2))&0x00FF);
+            return ((CURRENT_LATCHES.MDR >> 8 * (CURRENT_LATCHES.MAR % 2)) & 0x00FF);
         }
     }
 }
