@@ -1,6 +1,6 @@
 /*
-    Name 1: Your full name
-    UTEID 1: Your UT EID
+    Name 1: Zane Freeman
+    UTEID 1: ZCF222
 */
 
 /***************************************************************/
@@ -617,22 +617,22 @@ int main(int argc, char *argv[])
 
    Begin your code here 	  			       */
 /***************************************************************/
-uint16_t memory_data = 0;
-uint16_t memory_access_cycle_counter = 0;
-uint16_t mar_mux_bus_driver = 0;
-uint16_t pc_bus_driver = 0;
-uint16_t alu_bus_driver = 0;
-uint16_t shift_bus_driver = 0;
-uint16_t mdr_bus_driver = 0;
+int memory_data = 0;
+int memory_access_cycle_counter = 0;
+int mar_mux_bus_driver = 0;
+int pc_bus_driver = 0;
+int alu_bus_driver = 0;
+int shift_bus_driver = 0;
+int mdr_bus_driver = 0;
 
-uint8_t get_opcode()
+int get_opcode()
 {
     return (((CURRENT_LATCHES.IR & 0xF000) >> 12) & (0x000F));
 }
 
-uint16_t adder_muxes()
+int adder_muxes()
 {
-    uint16_t result = 0;
+    int result = 0;
     switch (GetADDR1MUX(CURRENT_LATCHES.MICROINSTRUCTION))
     {
     case 1:
@@ -771,7 +771,7 @@ void cycle_memory()
     }
 }
 
-uint16_t mar_gate_value()
+int mar_gate_value()
 {
     if (GetMARMUX(CURRENT_LATCHES.MICROINSTRUCTION))
     {
@@ -780,12 +780,12 @@ uint16_t mar_gate_value()
     return ((CURRENT_LATCHES.IR & 0x007F) << 1);
 }
 
-uint16_t pc_gate_value()
+int pc_gate_value()
 {
     return CURRENT_LATCHES.PC;
 }
 
-uint16_t alu_gate_value()
+int alu_gate_value()
 {
     switch (GetALUK(CURRENT_LATCHES.MICROINSTRUCTION))
     {
@@ -855,7 +855,7 @@ uint16_t alu_gate_value()
     }
 }
 
-uint16_t shift_gate_value()
+int shift_gate_value()
 {
     int right_shift = ((CURRENT_LATCHES.IR & 0x0010) >> 4);
     int arithmetical = ((CURRENT_LATCHES.IR & 0x0020) >> 5);
@@ -884,7 +884,7 @@ uint16_t shift_gate_value()
         return CURRENT_LATCHES.REGS[(CURRENT_LATCHES.IR & 0x01C0) >> 6] << shift;
     }
 }
-uint16_t mdr_gate_value()
+int mdr_gate_value()
 {
     if (GetDATA_SIZE(CURRENT_LATCHES.MICROINSTRUCTION))
     {
