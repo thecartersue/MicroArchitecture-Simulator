@@ -617,51 +617,102 @@ int main(int argc, char *argv[])
 
    Begin your code here 	  			       */
 /***************************************************************/
-uint16_t data = 0;
-uint16_t MemEn_Cycle = 0;
-uint16_t gated_value = 0;
+uint16_t memory_data = 0;
+uint16_t memory_access_cycle_counter = 0;
+uint16_t current_bus_value = 0;
+
+uint8_t get_opcode()
+{
+    return (((CURRENT_LATCHES.IR & 0xF000) >> 12) & (0x000F));
+}
+
+uint16_t adder_muxes()
+{
+    uint16_t result = 0;
+    switch (GetADDR1MUX(CURRENT_LATCHES.MICROINSTRUCTION))
+    {
+    case 1:
+        if (GetSR1MUX(CURRENT_LATCHES.MICROINSTRUCTION))
+        {
+            result += CURRENT_LATCHES.REGS[(CURRENT_LATCHES.IR & 0x01C0) >> 6];
+        }
+        break;
+    case 0:
+        result += CURRENT_LATCHES.PC;
+        break;
+    }
+
+    switch (GetADDR2MUX(CURRENT_LATCHES.MICROINSTRUCTION))
+    {
+        int shift = GetLSHF1(CURRENT_LATCHES.MICROINSTRUCTION);
+    case 1:
+        if (((0x0020 & CURRENT_LATCHES.IR) >> 5))
+        {
+            result += (((-1) * (CURRENT_LATCHES.IR & 0x003F)) << shift);
+        }
+        else
+        {
+            result += ((CURRENT_LATCHES.IR & 0x003F) << shift);
+        }
+        break;
+    case 2:
+        if (((0x0100 & CURRENT_LATCHES.IR) >> 8))
+        {
+            result += (((-1) * (CURRENT_LATCHES.IR & 0x01FF)) << shift);
+        }
+        else
+        {
+            result += ((CURRENT_LATCHES.IR & 0x01FF) << shift);
+        }
+        break;
+    case 3:
+        if (((0x0400 & CURRENT_LATCHES.IR) >> 10))
+        {
+            result += (((-1) * (CURRENT_LATCHES.IR & 0x07FF)) << shift);
+        }
+        else
+        {
+            result += ((CURRENT_LATCHES.IR & 0x07FF) << shift);
+        }
+        break;
+    }
+}
 void eval_micro_sequencer()
 {
-
     /* 
    * Evaluate the address of the next state according to the 
    * micro sequencer logic. Latch the next microinstruction.
    */
-
-    //If
+    //If the IRD bit is high, we know to load a new opcode!
     if (GetIRD(CURRENT_LATCHES.MICROINSTRUCTION))
     {
-        int opcode = (CURRENT_LATCHES.IR & 0xF000);
-        opcode = (opcode >> 12);
-        NEXT_LATCHES.STATE_NUMBER = 0x0000;
-        NEXT_LATCHES.STATE_NUMBER = NEXT_LATCHES.STATE_NUMBER + opcode;
+        NEXT_LATCHES.STATE_NUMBER = 0x0000 + get_opcode();
     }
-    switch (GetCOND(CURRENT_LATCHES.MICROINSTRUCTION))
+    else
     {
-    case 0:
-        //unconditional
-        NEXT_LATCHES.STATE_NUMBER = GetJ(CURRENT_LATCHES.MICROINSTRUCTION);
-        break;
-    case 1:
-        //compare the ready bit
-        NEXT_LATCHES.STATE_NUMBER = GetJ(CURRENT_LATCHES.MICROINSTRUCTION) ^ (CURRENT_LATCHES.READY << 1);
-        break;
-    case 2:
-        // compare the branch enable bit
-        NEXT_LATCHES.STATE_NUMBER = GetJ(CURRENT_LATCHES.MICROINSTRUCTION) ^ (CURRENT_LATCHES.BEN << 2);
-        break;
-    case 3:
-        //compare the priority bit
-        int priority_bit = (CURRENT_LATCHES.IR & 0x0800);
-        priority_bit = (priority_bit >> 11);
-        NEXT_LATCHES.STATE_NUMBER = GetJ(CURRENT_LATCHES.MICROINSTRUCTION) ^ priority_bit;
-        break;
-    default:
-        //if it's not one of these three, idk what's suppose to happen
-        break;
+        //Tells us whether we go to the next state or stay in this state until a condition is met
+        switch (GetCOND(CURRENT_LATCHES.MICROINSTRUCTION))
+        {
+        case 0:
+            //unconditional
+            NEXT_LATCHES.STATE_NUMBER = GetJ(CURRENT_LATCHES.MICROINSTRUCTION);
+            break;
+        case 1:
+            //compare the ready bit
+            NEXT_LATCHES.STATE_NUMBER = GetJ(CURRENT_LATCHES.MICROINSTRUCTION) ^ (CURRENT_LATCHES.READY << 1);
+            break;
+        case 2:
+            // compare the branch enable bit
+            NEXT_LATCHES.STATE_NUMBER = GetJ(CURRENT_LATCHES.MICROINSTRUCTION) ^ (CURRENT_LATCHES.BEN << 2);
+            break;
+        case 3:
+            //compare the priority bit
+            NEXT_LATCHES.STATE_NUMBER = GetJ(CURRENT_LATCHES.MICROINSTRUCTION) ^ ((CURRENT_LATCHES.IR & 0x0800) >> 11);
+            break;
+        }
     }
-
-    // memcpy(NEXT_LATCHES.MICROINSTRUCTION, CONTROL_STORE[NEXT_LATCHES.STATE_NUMBER], sizeof(int) * CONTROL_STORE_BITS);
+    //Get the microinstruction from the control store of the state number
+    *NEXT_LATCHES.MICROINSTRUCTION = CONTROL_STORE[NEXT_LATCHES.STATE_NUMBER];
 }
 
 void cycle_memory()
@@ -672,44 +723,185 @@ void cycle_memory()
    * If fourth, we need to latch Ready bit at the end of 
    * cycle to prepare microsequencer for the fifth cycle.  
    */
+    //Reset the Ready Bit
     NEXT_LATCHES.READY = 0;
-
+    //If we are suppose to be accessing memory
     if (GetMIO_EN(CURRENT_LATCHES.MICROINSTRUCTION))
     {
-        MemEn_Cycle++;
-        if (MemEn_Cycle == 4)
+        //Increment the memory access cycle counter
+        memory_access_cycle_counter++;
+        //If we have reached cycle 4
+        if (memory_access_cycle_counter == 4)
         {
-            NEXT_LATCHES.READY = 1;
             switch (GetR_W(CURRENT_LATCHES.MICROINSTRUCTION))
             {
-            case 0:
-                data = (MEMORY[CURRENT_LATCHES.MAR >> 1][1] << 8) + (MEMORY[CURRENT_LATCHES.MAR >> 1][0]);
+            case 0: //Reading From Memory
+                memory_data = (MEMORY[CURRENT_LATCHES.MAR >> 1][1] << 8) + (MEMORY[CURRENT_LATCHES.MAR >> 1][0]);
                 break;
-            case 1:
+            case 1: // Writing To Memory
+                //If we are suppose to write a full word
                 if (GetDATA_SIZE(CURRENT_LATCHES.MICROINSTRUCTION))
                 {
                     MEMORY[CURRENT_LATCHES.MAR >> 1][0] = (CURRENT_LATCHES.MDR & 0x00FF);
                     MEMORY[CURRENT_LATCHES.MAR >> 1][1] = (CURRENT_LATCHES.MDR & 0xFF00);
                 }
+                //Else, we are suppose to write a byte
                 else
                 {
-                    int shift = ((CURRENT_LATCHES.MAR & 0x0001) * 8);
+                    //Which memory location to access
                     if (CURRENT_LATCHES.MAR % 2)
                     {
-                        MEMORY[CURRENT_LATCHES.MAR >> 1][0] = ((CURRENT_LATCHES.MDR >> shift) & 0x00FF);
+                        MEMORY[CURRENT_LATCHES.MAR >> 1][0] = ((CURRENT_LATCHES.MDR >> ((CURRENT_LATCHES.MAR & 0x0001) << 3)) & 0x00FF);
                     }
                     else
                     {
-                        MEMORY[CURRENT_LATCHES.MAR >> 1][1] = ((CURRENT_LATCHES.MDR >> shift) & 0x00FF);
+                        MEMORY[CURRENT_LATCHES.MAR >> 1][1] = ((CURRENT_LATCHES.MDR >> ((CURRENT_LATCHES.MAR & 0x0001) << 3)) & 0x00FF);
                     }
                 }
                 break;
             }
+            //Set the Memory Ready Bit
+            NEXT_LATCHES.READY = 1;
+            memory_access_cycle_counter = 0;
         }
     }
-    if (MemEn_Cycle >= 5)
+}
+uint16_t mar_mux_bus_driver = 0;
+uint16_t pc_bus_driver = 0;
+uint16_t alu_bus_driver = 0;
+uint16_t shift_bus_driver = 0;
+uint16_t mdr_bus_driver = 0;
+
+uint16_t mar_gate_value()
+{
+    if (GetMARMUX(CURRENT_LATCHES.MICROINSTRUCTION))
     {
-        MemEn_Cycle = 0;
+        return adders_result();
+    }
+    return current_bus_value = ((CURRENT_LATCHES.IR & 0x007F) << 1);
+}
+
+uint16_t pc_gate_value()
+{
+    return CURRENT_LATCHES.PC;
+}
+
+uint16_t alu_gate_value()
+{
+    switch (GetALUK(CURRENT_LATCHES.MICROINSTRUCTION))
+    {
+        int steering_bit = ((CURRENT_LATCHES.IR & 0x0020) >> 5);
+        int sign = ((0x0010 & CURRENT_LATCHES.IR) >> 4);
+    case 0: // ADD
+        if (steering_bit)
+        {
+            if (sign)
+            {
+                return CURRENT_LATCHES.REGS[(CURRENT_LATCHES.IR & 0x01C0) >> 6] + (((-1) * (CURRENT_LATCHES.IR & 0x003F)));
+            }
+            else
+            {
+                return CURRENT_LATCHES.REGS[(CURRENT_LATCHES.IR & 0x01C0) >> 6] + (CURRENT_LATCHES.IR & 0x003F);
+            }
+        }
+        else
+        {
+            return CURRENT_LATCHES.REGS[(CURRENT_LATCHES.IR & 0x01C0) >> 6] + CURRENT_LATCHES.REGS[CURRENT_LATCHES.IR & 0x0007];
+        }
+        break;
+    case 1: // AND
+        if (steering_bit)
+        {
+            if (sign)
+            {
+                return CURRENT_LATCHES.REGS[(CURRENT_LATCHES.IR & 0x01C0) >> 6] & (((-1) * (CURRENT_LATCHES.IR & 0x003F)));
+            }
+            else
+            {
+                return CURRENT_LATCHES.REGS[(CURRENT_LATCHES.IR & 0x01C0) >> 6] & (CURRENT_LATCHES.IR & 0x003F);
+            }
+        }
+        else
+        {
+            return CURRENT_LATCHES.REGS[(CURRENT_LATCHES.IR & 0x01C0) >> 6] & CURRENT_LATCHES.REGS[CURRENT_LATCHES.IR & 0x0007];
+        }
+        break;
+    case 2: // XOR
+        if (steering_bit)
+        {
+            if (sign)
+            {
+                return CURRENT_LATCHES.REGS[(CURRENT_LATCHES.IR & 0x01C0) >> 6] ^ (((-1) * (CURRENT_LATCHES.IR & 0x003F)));
+            }
+            else
+            {
+                return CURRENT_LATCHES.REGS[(CURRENT_LATCHES.IR & 0x01C0) >> 6] ^ (CURRENT_LATCHES.IR & 0x003F);
+            }
+        }
+        else
+        {
+            return CURRENT_LATCHES.REGS[(CURRENT_LATCHES.IR & 0x01C0) >> 6] ^ CURRENT_LATCHES.REGS[CURRENT_LATCHES.IR & 0x0007];
+        }
+        break;
+    case 3:
+        if (GetSR1MUX(CURRENT_LATCHES.MICROINSTRUCTION))
+        {
+            return CURRENT_LATCHES.REGS[(CURRENT_LATCHES.IR & (0x01C0)) >> 6];
+        }
+        else
+        {
+            return CURRENT_LATCHES.REGS[(CURRENT_LATCHES.IR & (0x0E00)) >> 9];
+        }
+        break;
+    }
+}
+
+uint16_t shift_gate_value()
+{
+    int right_shift = ((CURRENT_LATCHES.IR & 0x0010) >> 4);
+    int arithmetical = ((CURRENT_LATCHES.IR & 0x0020) >> 5);
+    int shift = (CURRENT_LATCHES.IR & 0x000F);
+    if (right_shift)
+    {
+        if (arithmetical)
+        {
+            int sign = ((0x8000 & CURRENT_LATCHES.IR) >> 15);
+            if (sign)
+            {
+                    return (((-1) * CURRENT_LATCHES.REGS[(CURRENT_LATCHES.IR & 0x01C0) >> 6]) >> shift;
+            }
+            else
+            {
+                    return ((CURRENT_LATCHES.REGS[(CURRENT_LATCHES.IR & 0x01C0) >> 6]) >> shift;
+            }
+        }
+        else
+        {
+            return CURRENT_LATCHES.REGS[(CURRENT_LATCHES.IR & 0x01C0) >> 6] >> shift;
+        }
+    }
+    else
+    {
+        return CURRENT_LATCHES.REGS[(CURRENT_LATCHES.IR & 0x01C0) >> 6] << shift;
+    }
+}
+uint16_t mdr_gate_value()
+{
+    if (GetDATA_SIZE(CURRENT_LATCHES.MICROINSTRUCTION))
+    {
+        return CURRENT_LATCHES.MDR;
+    }
+    else
+    {
+        int sign = ((0x0080 & CURRENT_LATCHES.IR) >> 7);
+        if (sign)
+        {
+                return (-1)*(CURRENT_LATCHES.MDR >> 8*(CURRENT_LATCHES.MAR % 2))&0x00FF);
+        }
+        else
+        {
+                 return (CURRENT_LATCHES.MDR >> 8*(CURRENT_LATCHES.MAR % 2))&0x00FF);
+        }
     }
 }
 
@@ -726,187 +918,11 @@ void eval_bus_drivers()
    *		 Gate_MDR.
    */
 
-    if (GetGATE_MARMUX(CURRENT_LATCHES.MICROINSTRUCTION))
-    {
-        gated_value = 0;
-        if (GetMARMUX(CURRENT_LATCHES.MICROINSTRUCTION))
-        {
-            switch (GetADDR1MUX(CURRENT_LATCHES.MICROINSTRUCTION))
-            {
-            case 1:
-                if (GetSR1MUX(CURRENT_LATCHES.MICROINSTRUCTION))
-                {
-                    gated_value += CURRENT_LATCHES.REGS[(CURRENT_LATCHES.IR & 0x01C0) >> 6];
-                }
-                break;
-            case 0:
-                gated_value += CURRENT_LATCHES.PC;
-                break;
-            }
-
-            switch (GetADDR2MUX(CURRENT_LATCHES.MICROINSTRUCTION))
-            {
-                int shift = GetLSHF1(CURRENT_LATCHES.MICROINSTRUCTION);
-            case 1:
-                if (((0x0020 & CURRENT_LATCHES.IR) >> 5))
-                {
-                    gated_value += (((-1) * (CURRENT_LATCHES.IR & 0x003F)) << shift);
-                }
-                else
-                {
-                    gated_value += ((CURRENT_LATCHES.IR & 0x003F) << shift);
-                }
-                break;
-            case 2:
-                if (((0x0100 & CURRENT_LATCHES.IR) >> 8))
-                {
-                    gated_value += (((-1) * (CURRENT_LATCHES.IR & 0x01FF)) << shift);
-                }
-                else
-                {
-                    gated_value += ((CURRENT_LATCHES.IR & 0x01FF) << shift);
-                }
-                break;
-            case 3:
-                if (((0x0400 & CURRENT_LATCHES.IR) >> 10))
-                {
-                    gated_value += (((-1) * (CURRENT_LATCHES.IR & 0x07FF)) << shift);
-                }
-                else
-                {
-                    gated_value += ((CURRENT_LATCHES.IR & 0x07FF) << shift);
-                }
-                break;
-            }
-        }
-        else
-        {
-            gated_value = ((CURRENT_LATCHES.IR & 0x007F) << 1);
-        }
-    }
-
-    if (GetGATE_PC(CURRENT_LATCHES.MICROINSTRUCTION))
-    {
-        gated_value = CURRENT_LATCHES.PC;
-    }
-    if (GetGATE_ALU(CURRENT_LATCHES.MICROINSTRUCTION))
-    {
-        switch (GetALUK(CURRENT_LATCHES.MICROINSTRUCTION))
-        {
-            int steering_bit = ((CURRENT_LATCHES.IR & 0x0020) >> 5);
-            int sign = ((0x0010 & CURRENT_LATCHES.IR) >> 4);
-        case 0:
-            if (steering_bit)
-            {
-                if (sign)
-                {
-                    gated_value = CURRENT_LATCHES.REGS[(CURRENT_LATCHES.IR & 0x01C0) >> 6] + (((-1) * (CURRENT_LATCHES.IR & 0x003F)));
-                }
-                else
-                {
-                    gated_value = CURRENT_LATCHES.REGS[(CURRENT_LATCHES.IR & 0x01C0) >> 6] + (CURRENT_LATCHES.IR & 0x003F);
-                }
-            }
-            else
-            {
-                gated_value = CURRENT_LATCHES.REGS[(CURRENT_LATCHES.IR & 0x01C0) >> 6] + CURRENT_LATCHES.REGS[CURRENT_LATCHES.IR & 0x0007];
-            }
-            break;
-        case 1:
-            if (steering_bit)
-            {
-                if (sign)
-                {
-                    gated_value = CURRENT_LATCHES.REGS[(CURRENT_LATCHES.IR & 0x01C0) >> 6] & (((-1) * (CURRENT_LATCHES.IR & 0x003F)));
-                }
-                else
-                {
-                    gated_value = CURRENT_LATCHES.REGS[(CURRENT_LATCHES.IR & 0x01C0) >> 6] & (CURRENT_LATCHES.IR & 0x003F);
-                }
-            }
-            else
-            {
-                gated_value = CURRENT_LATCHES.REGS[(CURRENT_LATCHES.IR & 0x01C0) >> 6] & CURRENT_LATCHES.REGS[CURRENT_LATCHES.IR & 0x0007];
-            }
-            break;
-        case 2:
-            if (steering_bit)
-            {
-                if (sign)
-                {
-                    gated_value = CURRENT_LATCHES.REGS[(CURRENT_LATCHES.IR & 0x01C0) >> 6] ^ (((-1) * (CURRENT_LATCHES.IR & 0x003F)));
-                }
-                else
-                {
-                    gated_value = CURRENT_LATCHES.REGS[(CURRENT_LATCHES.IR & 0x01C0) >> 6] ^ (CURRENT_LATCHES.IR & 0x003F);
-                }
-            }
-            else
-            {
-                gated_value = CURRENT_LATCHES.REGS[(CURRENT_LATCHES.IR & 0x01C0) >> 6] ^ CURRENT_LATCHES.REGS[CURRENT_LATCHES.IR & 0x0007];
-            }
-            break;
-        case 3:
-            if (GetSR1MUX(CURRENT_LATCHES.MICROINSTRUCTION))
-            {
-                gated_value = CURRENT_LATCHES.REGS[(CURRENT_LATCHES.IR & (0x01C0)) >> 6];
-            }
-            else
-            {
-                gated_value = CURRENT_LATCHES.REGS[(CURRENT_LATCHES.IR & (0x0E00)) >> 9];
-            }
-            break;
-        }
-    }
-    if (GetGATE_SHF(CURRENT_LATCHES.MICROINSTRUCTION))
-    {
-        int right_shift = ((CURRENT_LATCHES.IR & 0x0010) >> 4);
-        int arithmetical = ((CURRENT_LATCHES.IR & 0x0020) >> 5);
-        int shift = (CURRENT_LATCHES.IR & 0x000F);
-        if (right_shift)
-        {
-            if (arithmetical)
-            {
-                int sign = ((0x8000 & CURRENT_LATCHES.IR) >> 15);
-                if (sign)
-                {
-                    gated_value = (((-1) * CURRENT_LATCHES.REGS[(CURRENT_LATCHES.IR & 0x01C0) >> 6]) >> shift;
-                }
-                else
-                {
-                    gated_value = ((CURRENT_LATCHES.REGS[(CURRENT_LATCHES.IR & 0x01C0) >> 6]) >> shift;
-                }
-            }
-            else
-            {
-                gated_value = CURRENT_LATCHES.REGS[(CURRENT_LATCHES.IR & 0x01C0) >> 6] >> shift;
-            }
-        }
-        else
-        {
-            gated_value = CURRENT_LATCHES.REGS[(CURRENT_LATCHES.IR & 0x01C0) >> 6] << shift;
-        }
-    }
-    if (GetGATE_MDR(CURRENT_LATCHES.MICROINSTRUCTION))
-    {
-        if (GetDATA_SIZE(CURRENT_LATCHES.MICROINSTRUCTION))
-        {
-            gated_value = CURRENT_LATCHES.MDR;
-        }
-        else
-        {
-            int sign = ((0x0080 & CURRENT_LATCHES.IR) >> 7);
-            if (sign)
-            {
-                gated_value = (-1)*(CURRENT_LATCHES.MDR >> 8*(CURRENT_LATCHES.MAR % 2))&0x00FF);
-            }
-            else
-            {
-                 gated_value = (CURRENT_LATCHES.MDR >> 8*(CURRENT_LATCHES.MAR % 2))&0x00FF);
-            }
-        }
-    }
-    gated_value = Low16bits(gated_value);
+    mar_mux_bus_driver = mar_gate_value();
+    pc_bus_driver = pc_gate_value();
+    alu_bus_driver = alu_gate_value();
+    shift_bus_driver = shift_gate_value();
+    mdr_bus_driver = mdr_gate_value();
 }
 
 void drive_bus()
@@ -916,8 +932,26 @@ void drive_bus()
    * Datapath routine for driving the bus from one of the 5 possible 
    * tristate drivers. 
    */
-    BUS = gated_value;
-    //????
+    if (GetGATE_MARMUX(CURRENT_LATCHES.MICROINSTRUCTION))
+    {
+        BUS = mar_mux_bus_driver;
+    }
+    if (GetGATE_PC(CURRENT_LATCHES.MICROINSTRUCTION))
+    {
+        BUS = pc_bus_driver;
+    }
+    if (GetGATE_ALU(CURRENT_LATCHES.MICROINSTRUCTION))
+    {
+        BUS = alu_bus_driver;
+    }
+    if (GetGATE_SHF(CURRENT_LATCHES.MICROINSTRUCTION))
+    {
+        BUS = shift_bus_driver;
+    }
+    if (GetGATE_MDR(CURRENT_LATCHES.MICROINSTRUCTION))
+    {
+        BUS = mdr_bus_driver;
+    }
 }
 
 void latch_datapath_values()
@@ -935,6 +969,21 @@ void latch_datapath_values()
     }
     if (GetLD_MDR(CURRENT_LATCHES.MICROINSTRUCTION))
     {
+        if (GetMIO_EN(CURRENT_LATCHES.MICROINSTRUCTION))
+        {
+            NEXT_LATCHES.MDR = memory_data;
+        }
+        else
+        {
+            if (GetDATA_SIZE(CURRENT_LATCHES.MICROINSTRUCTION))
+            {
+                NEXT_LATCHES.MDR = BUS;
+            }
+            else
+            {
+                NEXT_LATCHES.MDR = BUS << (8 * (CURRENT_LATCHES.MAR & 0x0001));
+            }
+        }
     }
     if (GetLD_IR(CURRENT_LATCHES.MICROINSTRUCTION))
     {
@@ -942,9 +991,18 @@ void latch_datapath_values()
     }
     if (GetLD_BEN(CURRENT_LATCHES.MICROINSTRUCTION))
     {
+        NEXT_LATCHES.BEN = (CURRENT_LATCHES.N && ((CURRENT_LATCHES.IR & 0x0800) >> 10)) || (CURRENT_LATCHES.Z && ((CURRENT_LATCHES.IR & 0x0400) >> 9)) || (CURRENT_LATCHES.P && ((CURRENT_LATCHES.IR & 0x0200) >> 8));
     }
     if (GetLD_REG(CURRENT_LATCHES.MICROINSTRUCTION))
     {
+        if (GetDRMUX(CURRENT_LATCHES.MICROINSTRUCTION))
+        {
+            NEXT_LATCHES.REGS[7] = BUS;
+        }
+        else
+        {
+            NEXT_LATCHES.REGS[(CURRENT_LATCHES.IR & 0x0E00) >> 9] = BUS;
+        }
     }
     if (GetLD_CC(CURRENT_LATCHES.MICROINSTRUCTION))
     {
@@ -978,7 +1036,7 @@ void latch_datapath_values()
             NEXT_LATCHES.PC = BUS;
             break;
         case 2:
-            //NEXT_LATCHES.PC;
+            NEXT_LATCHES.PC = adders_result();
             break;
         }
     }
